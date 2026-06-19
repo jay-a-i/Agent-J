@@ -59,8 +59,35 @@ def write_file(file_path, content):
         if dir_name:
             os.makedirs(dir_name, exist_ok=True)
 
-        with open(file_path, 'w', encoding='utf-8') as file:
+        with open(f'{file_path}', 'w', encoding='utf-8') as file:
             file.write(content)
             return f"Success: File successfully written at '{file_path}'"
     except Exception as e:
         return f"[Error Occured: {e}]"
+
+def edit_file(file_path, old_content, new_content):
+    output = []
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            file_content = file.read()
+            match_count = file_content.count(old_content)
+
+            if match_count == 0:
+                output.append("Error: The old text was not found in the file.")
+                return "\n".join(output)
+            elif match_count > 1:
+                output.append(f"Warning: Found {match_count} matches, replacing only the first occurrence.")
+            
+            output.append("Found match!")
+            updated_content = file_content.replace(old_content, new_content, 1)
+            
+            try:
+                with open(file_path, 'w', encoding='utf-8') as file:
+                    file.write(updated_content)
+                output.append("Successfully added the new content!")
+            except Exception as e:
+                    output.append(f"Unable to write anything in the given file!\n[Error: {e}]")    
+
+    except Exception as e:
+        output.append(f"[Error: {e}]")
+    return "\n".join(output)
