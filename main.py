@@ -1,10 +1,10 @@
 import os
 import json
 import asyncio
-from tools import search_web, read_file, list_directory, write_file
+from tools import search_web, read_file, list_directory, write_file, edit_file
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
-
+from typing import TypedDict
 load_dotenv()
 
 client = AsyncOpenAI(
@@ -17,13 +17,17 @@ tool_schema = [
         "type": "function",
         "function": {
             "name": "search_web",
-            "description": "Search the internet for up-to-the-minute real-time information, news, dates, and live events.",
+            "description": (
+                "Search the internet for recent information, documentation, "
+                "news, APIs, libraries, dates, and facts that are not available "
+                "locally. Use this tool when up-to-date information is required."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
-                        "type": "string",
-                        "description": "The search query keywords to look up on the web."
+                    "type": "string",
+                    "description": "Search query describing the information to find."
                     }
                 },
                 "required": ["query"]
@@ -34,13 +38,16 @@ tool_schema = [
         "type": "function",
         "function": {
             "name": "read_file",
-            "description": "Read the file in the given path and outputs it's content as string",
+            "description": (
+                "Read a file and return its contents with line numbers. "
+                "Use this before editing a file or when inspecting existing code."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "file_path": {
-                        "type": "string",
-                        "description": "The File Path of the file which you need to read"
+                    "type": "string",
+                    "description": "Path to the file to read."
                     }
                 },
                 "required": ["file_path"]
@@ -51,37 +58,85 @@ tool_schema = [
         "type": "function",
         "function": {
             "name": "list_directory",
-            "description": "List all files and sub-folders recursively inside a target directory layout tree.",
+            "description": (
+                "Recursively list files and folders inside a directory. "
+                "Use this to explore the workspace structure before reading "
+                "or creating files."
+            ),
             "parameters": {
-               "type": "object",
+                "type": "object",
                 "properties": {
                     "dir_path": {
                         "type": "string",
-                        "description": "Target folder directory path. Defaults to root workspace if blank."
+                        "description": "Directory path to inspect. Use '.' for the current workspace."
                     }
                 },
                 "required": ["dir_path"]
             }
         }
     },
-    {# Schema of tool 'write_file'
+    {# Schema of tool 'write_tool'
         "type": "function",
         "function": {
             "name": "write_file",
-            "description": "Create a new file or overwrite an existing file with the given content. Use this when asked to create a new file or completely replace a file's contents.",
+            "description": (
+                "Create a new file or completely overwrite an existing file. "
+                "Use this tool when creating files from scratch or replacing "
+                "the entire contents of a file. "
+                "Prefer edit_file for making partial modifications."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "file_path": {
                         "type": "string",
-                        "description": "The full path of the file to write to."
-                        },
+                        "description": "Path of the file to create or overwrite."},
                     "content": {
                         "type": "string",
-                        "description": "The full content to write into the file."
+                        "description": "Complete contents to write into the file."
                     }
                 },
-                "required": ["file_path", "content"]
+                "required": [
+                    "file_path",
+                    "content"
+                    ]
+            }
+        }
+    },
+    {# Schema of tool 'edit_file'
+        "type": "function",
+        "function": {
+            "name": "edit_file",
+            "description": (
+                "Modify part of an existing file by replacing one exact block "
+                "of text with another. Prefer this tool instead of write_file "
+                "when only a small section needs to change. "
+                "old_content must exactly match text already present in the file."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                    "type": "string",
+                    "description": "Path to the file to modify."
+                    },
+                    "old_content": {
+                        "type": "string",
+                        "description": (
+                            "Exact text currently present in the file that should "
+                            "be replaced. Include indentation and line breaks exactly."
+                        )
+                    },
+                    "new_content": {
+                        "type": "string",
+                        "description": "Replacement text."
+                    }
+                },
+                "required": [
+                    "file_path",
+                    "old_content",
+                    "new_content"
+                ]
             }
         }
     }
@@ -189,11 +244,17 @@ async def main(user_input):
         async for chunk in final_stream:
             if chunk.choices and chunk.choices[0].delta.content:
                 print(chunk.choices[0].delta.content, end="", flush=True)
-                  
+                 
     except json.JSONDecodeError:
         print("\n[Error]: Failed to parse tool argument strings from model.")
           
   print()
+
+class AgentState(TypedDict):
+    messages: list
+    retry_count: int
+    current_step: str
+    workspace: str
 
 if __name__ == "__main__":
     user_input = input("Enter a prompt:  ")
