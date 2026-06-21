@@ -1,169 +1,59 @@
 import os
 import json
 import asyncio
-from tools import search_web, read_file, list_directory, write_file, edit_file
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from typing import TypedDict
+from sys_prompts import system_prompt
+from tools import (search_web, read_file,
+                   list_directory, write_file,
+                   edit_file, grep)
+from tool_schemas import (search_web_schema, read_file_schema,
+                          list_dirctory_schema, write_file_schema,
+                          edit_file_schema, grep_schema)
+
 load_dotenv()
+
+fol = [] # 'fol' stands for FinalOutputlog, making this now for future ReACT usecases.
 
 client = AsyncOpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=os.getenv("OPENROUTER_API_KEY")
   )
 
-tool_schema = [
-    {# "search_web" tool schema
-        "type": "function",
-        "function": {
-            "name": "search_web",
-            "description": (
-                "Search the internet for recent information, documentation, "
-                "news, APIs, libraries, dates, and facts that are not available "
-                "locally. Use this tool when up-to-date information is required."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                    "type": "string",
-                    "description": "Search query describing the information to find."
-                    }
-                },
-                "required": ["query"]
-            }
-        }
-    },
-    {# Schema of tool 'read_file'
-        "type": "function",
-        "function": {
-            "name": "read_file",
-            "description": (
-                "Read a file and return its contents with line numbers. "
-                "Use this before editing a file or when inspecting existing code."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "file_path": {
-                    "type": "string",
-                    "description": "Path to the file to read."
-                    }
-                },
-                "required": ["file_path"]
-            }
-        }
-    },
-    {# Schema of tool 'list_directory'
-        "type": "function",
-        "function": {
-            "name": "list_directory",
-            "description": (
-                "Recursively list files and folders inside a directory. "
-                "Use this to explore the workspace structure before reading "
-                "or creating files."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "dir_path": {
-                        "type": "string",
-                        "description": "Directory path to inspect. Use '.' for the current workspace."
-                    }
-                },
-                "required": ["dir_path"]
-            }
-        }
-    },
-    {# Schema of tool 'write_tool'
-        "type": "function",
-        "function": {
-            "name": "write_file",
-            "description": (
-                "Create a new file or completely overwrite an existing file. "
-                "Use this tool when creating files from scratch or replacing "
-                "the entire contents of a file. "
-                "Prefer edit_file for making partial modifications."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "file_path": {
-                        "type": "string",
-                        "description": "Path of the file to create or overwrite."},
-                    "content": {
-                        "type": "string",
-                        "description": "Complete contents to write into the file."
-                    }
-                },
-                "required": [
-                    "file_path",
-                    "content"
-                    ]
-            }
-        }
-    },
-    {# Schema of tool 'edit_file'
-        "type": "function",
-        "function": {
-            "name": "edit_file",
-            "description": (
-                "Modify part of an existing file by replacing one exact block "
-                "of text with another. Prefer this tool instead of write_file "
-                "when only a small section needs to change. "
-                "old_content must exactly match text already present in the file."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "file_path": {
-                    "type": "string",
-                    "description": "Path to the file to modify."
-                    },
-                    "old_content": {
-                        "type": "string",
-                        "description": (
-                            "Exact text currently present in the file that should "
-                            "be replaced. Include indentation and line breaks exactly."
-                        )
-                    },
-                    "new_content": {
-                        "type": "string",
-                        "description": "Replacement text."
-                    }
-                },
-                "required": [
-                    "file_path",
-                    "old_content",
-                    "new_content"
-                ]
-            }
-        }
-    }
-]
+tool_schema = [search_web_schema, read_file_schema,
+               list_dirctory_schema, write_file_schema,
+               edit_file_schema, grep_schema
+               ]
 
 async def main(user_input):
-  
-  messages = [
-    {"role": "user", "content": f"{user_input}"}
-  ]
+    messages = [
+        {
+            "role": "system",
+            "content": system_prompt
+        },
+        {
+            "role": "user",
+            "content": user_input
+        }
+    ]
 
-  stream = await client.chat.completions.create(
+    stream = await client.chat.completions.create(
       model="nex-agi/nex-n2-pro:free",
       messages=messages,
       tools=tool_schema,
       tool_choice='auto',
       stream=True,
       extra_body={"reasoning": {"enabled": True}}
-  )
+    )
 
-  tool_call_detected = False
-  tool_name = ""
-  tool_arguments_stream = ""
+    tool_call_detected = False
+    tool_name = ""
+    tool_arguments_stream = ""
   
-  async for chunk in stream:
-      if chunk.choices:
-        content = chunk.choices[0].delta.content
+    async for chunk in stream:
+        if chunk.choices:
+            content = chunk.choices[0].delta.content
         if content:
             print(content, end="", flush=True)
             
@@ -178,8 +68,8 @@ async def main(user_input):
                 tool_arguments_stream += delta_tool.function.arguments
                 print(".", end="", flush=True)
 
-  if tool_call_detected:
-    print(f"\n\n[Tool Triggered]: Model requested function '{tool_name}'")
+    if tool_call_detected:
+        print(f"\n\n[Tool Triggered]: Model requested function '{tool_name}'")
     try:
         parsed_args = json.loads(tool_arguments_stream)
 
@@ -196,6 +86,16 @@ async def main(user_input):
             write_file_path = parsed_args.get("file_path", "")
             write_file_content = parsed_args.get("content", "")
             print(f"[Tool Executing]: '{tool_name}' → \"{write_file_path}\"")
+        elif tool_name == 'edit_file':
+            edit_file_path = parsed_args.get("file_path", "")
+            edit_file_old_content = parsed_args.get("old_content", "")
+            edit_file_new_content = parsed_args.get("new_content", "")
+            print(f"[Tool Executing]: '{tool_name}' → File Path: \"{edit_file_path}\"")
+        elif tool_name == 'grep':
+            grep_root_dir = parsed_args.get("root_dir", "")
+            grep_search_term = parsed_args.get("search_term", "")
+            print(f"[Tool Executing]: '{tool_name}' → Root Directory:\"{grep_root_dir}\"\nSearch Term: \"{grep_search_term}\"")
+            
 
         tools_result = []
         if tool_name == "search_web":
@@ -210,6 +110,12 @@ async def main(user_input):
         elif tool_name == "write_file":
             write_file_result = write_file(write_file_path, write_file_content)
             tools_result.append({tool_name: write_file_result})
+        elif tool_name == "edit_file":
+            edit_file_result = edit_file(edit_file_path, edit_file_old_content, edit_file_new_content)
+            tools_result.append({tool_name: edit_file_result})
+        elif tool_name == "grep":
+            grep_result = grep(grep_root_dir, grep_search_term)
+            tools_result.append({tool_name: grep_result})
 
         call_id = "call_" + os.urandom(4).hex()
 
@@ -248,8 +154,9 @@ async def main(user_input):
     except json.JSONDecodeError:
         print("\n[Error]: Failed to parse tool argument strings from model.")
           
-  print()
+    print()
 
+#This is for future usecases.
 class AgentState(TypedDict):
     messages: list
     retry_count: int
