@@ -156,3 +156,32 @@ grep_schema = {# Schema of tool 'grep'
             }
         }
     }
+
+run_command_schema = {# Schema of tool 'run_command'
+        "type": "function",
+        "function": {
+            "name": "run_command",
+            "description": ("Executes a terminal/shell command on the host system after manual human verification."
+                           "Use for running tests, checking files, installing libraries or frameworks or managing code directories."
+                           "Do not use for destructive operations."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command_string": {
+                        "type": "string",
+                        "description": ("The exact raw shell command string to be executed (e.g., 'pytest tests/' or 'ls -la')."
+                                        "Avoid complex chained pipelines using && or | unless explicit sandbox environments are provided."
+                        )  
+                    }
+                },
+                "required": ["command_string"]
+            }
+        }   
+    }
+
+tool_schema = [search_web_schema, read_file_schema,
+               list_dirctory_schema, write_file_schema,
+               edit_file_schema, grep_schema,
+               run_command_schema
+               ]
