@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 from pathlib import Path
 from tavily import AsyncTavilyClient
+import subprocess, shlex, asyncio
 
 load_dotenv()
 
@@ -156,3 +157,53 @@ def grep(root_dir, search_term, ext_filter=None):
         output_lines.append(f"Match: {match['text']}\n")
         
     return "\n".join(output_lines)
+
+async def run_command(command_string: str):
+    print(f"GIVE PERMISSION TO RUN COMMAND:\n`{command_string}`\n?????")
+    
+    while True:
+        permission = input("Please enter Yes/No: ").lower().strip()
+        if permission in ["yes", "no"]:
+            break
+        print("Invalid input. Please type exactly 'Yes' or 'No'.")
+         
+    if permission == "yes":
+        try:
+            parsed_args = shlex.split(command_string) 
+
+            process = await asyncio.create_subprocess_exec(
+                *parsed_args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=120)
+            print(f"[Running Command in shell]:\n{command_string}")
+            return {
+                "stdout": stdout.decode(),
+                "stderr": stderr.decode(),
+                "exit_code": process.returncode
+            }
+        except subprocess.TimeoutExpired:
+            return {
+                "stdout": "",
+                "stderr": "Command timed out after 120 seconds.",
+                "exit_code": -1
+            }
+        except Exception as e:
+            return {
+                "stdout": "",
+                "stderr": str(e),
+                "exit_code": -1
+            }
+    elif permission == "no":
+        return f"[Access denied by user to run command:\n{command_string}]"
+
+TOOLS = {
+    "search_web": search_web,
+    "read_file": read_file,
+    "list_directory": list_directory,
+    "write_file": write_file,
+    "edit_file": edit_file,
+    "grep": grep,
+    "run_command": run_command
+}
